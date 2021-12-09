@@ -102,10 +102,13 @@ func (c *cryptoTransferTransactionConstructor) Construct(
 		transaction.AddNftTransfer(nftTransfer.nftId, nftTransfer.sender, nftTransfer.receiver)
 	}
 
+	memo, _ := ctx.Value("memo").(string)
+
 	// set to a single node account ID, so later can add signature
 	_, err := transaction.
 		SetTransactionID(getTransactionId(senders[0], validStartNanos)).
 		SetNodeAccountIDs([]hedera.AccountID{nodeAccountId}).
+		SetTransactionMemo(memo).
 		Freeze()
 	if err != nil {
 		return nil, nil, errors.ErrTransactionFreezeFailed

@@ -28,7 +28,7 @@ import (
 
 	rTypes "github.com/coinbase/rosetta-sdk-go/types"
 	"github.com/go-playground/validator/v10"
-	"github.com/hashgraph/hedera-mirror-node/hedera-mirror-rosetta/app/domain/types"
+	"github.com/hashgraph/hedera-mirror-node/hedera-mirror-rosetta/app/persistence/domain"
 	"github.com/hashgraph/hedera-mirror-node/hedera-mirror-rosetta/app/errors"
 	"github.com/hashgraph/hedera-mirror-node/hedera-mirror-rosetta/app/interfaces"
 	"github.com/hashgraph/hedera-sdk-go/v2"
@@ -205,22 +205,32 @@ func validateToken(
 	tokenRepo interfaces.TokenRepository,
 	currency *rTypes.Currency,
 ) (*hedera.TokenID, *rTypes.Error) {
-	token, rErr := tokenRepo.Find(ctx, currency.Symbol)
-	if rErr != nil {
-		return nil, rErr
-	}
+	// token, rErr := tokenRepo.Find(ctx, currency.Symbol)
+	// if rErr != nil {
+	// 	return nil, rErr
+	// }
 
-	if token.Decimals != int64(currency.Decimals) {
+	// if token.Decimals != int64(currency.Decimals) {
+	// 	return nil, errors.ErrInvalidToken
+	// }
+ 
+	// if len(currency.Metadata) != 1 {
+	// 	return nil, errors.ErrInvalidCurrency
+	// }
+
+	// if tokenType, ok := currency.Metadata[types.MetadataKeyType].(string); !ok || tokenType != token.Type {
+	// 	return nil, errors.ErrInvalidCurrency
+	// }
+
+	token, err := domain.EntityIdFromString(currency.Symbol)
+
+	if err != nil {
 		return nil, errors.ErrInvalidToken
 	}
 
-	if len(currency.Metadata) != 1 {
-		return nil, errors.ErrInvalidCurrency
-	}
-
-	if tokenType, ok := currency.Metadata[types.MetadataKeyType].(string); !ok || tokenType != token.Type {
-		return nil, errors.ErrInvalidCurrency
-	}
-
-	return types.Token{Token: token}.ToHederaTokenId(), nil
+	return &hedera.TokenID{
+		Shard: uint64(token.ShardNum),
+		Realm: uint64(token.RealmNum),
+		Token: uint64(token.EntityNum),
+	}, nil
 }

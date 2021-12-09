@@ -122,7 +122,7 @@ func NewTransactionConstructor(tokenRepo interfaces.TokenRepository) Transaction
 	c.addConstructor(newCryptoTransferTransactionConstructor(tokenRepo))
 	c.addConstructor(newTokenCreateTransactionConstructor())
 
-	if tokenRepo != nil {
+	// if tokenRepo != nil {
 		c.addConstructor(newTokenAssociateTransactionConstructor(tokenRepo))
 		c.addConstructor(newTokenBurnTransactionConstructor(tokenRepo))
 		c.addConstructor(newTokenDeleteTransactionConstructor(tokenRepo))
@@ -134,7 +134,7 @@ func NewTransactionConstructor(tokenRepo interfaces.TokenRepository) Transaction
 		c.addConstructor(newTokenUnfreezeTransactionConstructor(tokenRepo))
 		c.addConstructor(newTokenUpdateTransactionConstructor(tokenRepo))
 		c.addConstructor(newTokenWipeTransactionConstructor(tokenRepo))
-	}
+	// }
 
 	return c
 }

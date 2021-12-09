@@ -41,6 +41,7 @@ import (
 )
 
 const MetadataKeyValidStartNanos = "valid_start_nanos"
+const MetadataKeyMemo = "memo"
 
 // constructionAPIService implements the server.ConstructionAPIServicer interface.
 type constructionAPIService struct {
@@ -166,12 +167,14 @@ func (c *constructionAPIService) ConstructionPayloads(
 	request *rTypes.ConstructionPayloadsRequest,
 ) (*rTypes.ConstructionPayloadsResponse, *rTypes.Error) {
 	validStartNanos, rErr := c.getValidStartNanos(request.Metadata)
+	memo, rErr := c.getMemo(request.Metadata)
 	if rErr != nil {
 		return nil, rErr
 	}
+	ctx1 := context.WithValue(ctx, "memo", memo)
 
 	transaction, signers, rErr := c.transactionHandler.Construct(
-		ctx,
+		ctx1,
 		c.getRandomNodeAccountId(),
 		request.Operations,
 		validStartNanos,
@@ -276,6 +279,20 @@ func (c *constructionAPIService) getValidStartNanos(metadata map[string]interfac
 	}
 
 	return validStartNanos, nil
+}
+
+func (c *constructionAPIService) getMemo(metadata map[string]interface{}) (string, *rTypes.Error) {
+	var memo string
+	if metadata != nil && metadata[MetadataKeyMemo] != nil {
+		memo, ok := metadata[MetadataKeyMemo].(string)
+		if !ok {
+			return memo, errors.ErrInvalidArgument
+		}
+
+		return memo, nil
+	}
+
+	return memo, nil
 }
 
 // NewConstructionAPIService creates a new instance of a constructionAPIService.
