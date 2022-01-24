@@ -102,10 +102,13 @@ func (c *cryptoTransferTransactionConstructor) Construct(
 		transaction.AddNftTransfer(nftTransfer.nftId, nftTransfer.sender, nftTransfer.receiver)
 	}
 
+	memo, _ := ctx.Value("memo").(string)
+
 	// set to a single node account ID, so later can add signature
 	_, err := transaction.
 		SetTransactionID(getTransactionId(senders[0], validStartNanos)).
 		SetNodeAccountIDs([]hedera.AccountID{nodeAccountId}).
+		SetTransactionMemo(memo).
 		Freeze()
 	if err != nil {
 		return nil, nil, errors.ErrTransactionFreezeFailed
@@ -226,7 +229,6 @@ func (c *cryptoTransferTransactionConstructor) preprocess(ctx context.Context, o
 		return nil, nil, rErr
 	}
 
-	currencies := map[string]rTypes.Currency{types.CurrencyHbar.Symbol: *types.CurrencyHbar}
 	transfers := make([]transfer, 0, len(operations))
 	senderMap := senderMap{}
 	sums := make(map[string]int64)
@@ -239,9 +241,6 @@ func (c *cryptoTransferTransactionConstructor) preprocess(ctx context.Context, o
 		}
 
 		currency := operation.Amount.Currency
-		if !c.validateCurrency(ctx, currency, currencies) {
-			return nil, nil, errors.ErrInvalidCurrency
-		}
 
 		amount, rErr := types.NewAmount(operation.Amount)
 		if rErr != nil {
@@ -284,34 +283,6 @@ func (c *cryptoTransferTransactionConstructor) preprocess(ctx context.Context, o
 	}
 
 	return transfers, senderMap.toSenders(), nil
-}
-
-func (c *cryptoTransferTransactionConstructor) validateCurrency(
-	ctx context.Context,
-	currency *rTypes.Currency,
-	currencies map[string]rTypes.Currency,
-) bool {
-	if cached, ok := currencies[currency.Symbol]; ok {
-		if compareCurrency(&cached, currency) {
-			return true
-		}
-	}
-
-	if c.tokenRepo == nil {
-		// offline mode
-		return false
-	}
-
-	if _, err := hedera.TokenIDFromString(currency.Symbol); err != nil {
-		return false
-	}
-
-	if _, err := validateToken(ctx, c.tokenRepo, currency); err != nil {
-		return false
-	}
-
-	currencies[currency.Symbol] = *currency
-	return true
 }
 
 func newCryptoTransferTransactionConstructor(tokenRepo interfaces.TokenRepository) transactionConstructorWithType {
