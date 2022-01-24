@@ -28,9 +28,6 @@ import static com.hedera.mirror.common.domain.entity.EntityType.TOKEN;
 
 import com.google.common.collect.Range;
 import com.google.protobuf.ByteString;
-
-import com.hedera.mirror.common.util.DomainUtils;
-
 import com.hederahashgraph.api.proto.java.Key;
 import com.hederahashgraph.api.proto.java.SignaturePair;
 import java.security.SecureRandom;
@@ -67,6 +64,7 @@ import com.hedera.mirror.common.domain.token.TokenTransfer;
 import com.hedera.mirror.common.domain.transaction.NonFeeTransfer;
 import com.hedera.mirror.common.domain.transaction.RecordFile;
 import com.hedera.mirror.common.domain.transaction.TransactionSignature;
+import com.hedera.mirror.common.util.DomainUtils;
 
 @Log4j2
 @Named
@@ -133,10 +131,10 @@ public class DomainBuilder {
                 .data(bytes(128))
                 .index((int) id())
                 .payerAccountId(entityId(ACCOUNT))
-                .topic0("0x00")
-                .topic1("0x01")
-                .topic2("0x02")
-                .topic3("0x03");
+                .topic0(bytes(64))
+                .topic1(bytes(64))
+                .topic2(bytes(64))
+                .topic3(bytes(64));
         return new DomainPersister<>(getRepository(ContractLog.class), builder, builder::build);
     }
 
@@ -162,6 +160,7 @@ public class DomainBuilder {
         long timestamp = timestamp();
 
         Entity.EntityBuilder builder = Entity.builder()
+                .alias(key())
                 .autoRenewAccountId(entityId(ACCOUNT))
                 .autoRenewPeriod(1800L)
                 .createdTimestamp(timestamp)

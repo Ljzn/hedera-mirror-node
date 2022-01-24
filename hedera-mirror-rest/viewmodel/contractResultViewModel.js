@@ -21,7 +21,6 @@
 'use strict';
 
 const _ = require('lodash');
-
 const EntityId = require('../entityId');
 const utils = require('../utils');
 
@@ -32,12 +31,11 @@ class ContractResultViewModel {
   /**
    * Constructs contractResult view model
    *
-   * @param {ContractResult} contract
+   * @param {ContractResult} contractResult
    */
   constructor(contractResult) {
     Object.assign(this, {
       amount: Number(contractResult.amount),
-      bloom: utils.toHexString(contractResult.bloom, true),
       call_result: utils.toHexString(contractResult.callResult, true),
       contract_id: EntityId.parse(contractResult.contractId).toString(),
       created_contract_ids: _.toArray(contractResult.createdContractIds).map((id) => EntityId.parse(id).toString()),

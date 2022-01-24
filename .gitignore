@@ -129,9 +129,9 @@ hedera-mirror-rest/.husky/_
 hedera-mirror-rest/check-state-proof/output
 
 # Rosetta
-hedera-mirror-rosetta/hedera-mirror-rosetta
-hedera-mirror-rosetta/scripts/validation/rosetta-cli
+rosetta-cli
 coverage.txt
 
 # Auto-generated release notes
 release_notes.md
+hedera-mirror-rosetta/hedera-mirror-rosetta

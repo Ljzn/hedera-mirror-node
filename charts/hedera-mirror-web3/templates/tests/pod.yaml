@@ -1,0 +1,23 @@
+{{- if .Values.test.enabled -}}
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    helm.sh/hook: test-success
+    helm.sh/hook-delete-policy: before-hook-creation,hook-failed,hook-succeeded
+  labels: {{- include "hedera-mirror-web3.labels" . | nindent 4 }}
+  name: {{ include "hedera-mirror-web3.fullname" . }}-test
+  namespace: {{ include "hedera-mirror-web3.namespace" . }}
+spec:
+  containers:
+    - name: test
+      image: "{{ .Values.test.image.repository }}:{{ .Values.test.image.tag }}"
+      imagePullPolicy: {{ .Values.test.image.pullPolicy }}
+      args:
+        - run
+        - https://raw.githubusercontent.com/hashgraph/hedera-mirror-node/{{ .Chart.AppVersion }}/hedera-mirror-web3/postman.json
+        - --env-var
+        - baseUrl=http://{{ include "hedera-mirror-web3.fullname" . }}:{{ .Values.service.port }}
+  terminationGracePeriodSeconds: 1
+  restartPolicy: Never
+{{- end -}}

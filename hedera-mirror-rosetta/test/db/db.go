@@ -44,7 +44,7 @@ import (
 )
 
 const (
-	dbCleanupScript = "hedera-mirror-importer/src/main/resources/db/scripts/cleanup.sql"
+	dbCleanupScript = "hedera-mirror-importer/src/test/resources/db/scripts/cleanup.sql"
 	dbMigrationPath = "hedera-mirror-importer/src/main/resources/db/migration/v1"
 	dbName          = "mirror_node"
 	dbUsername      = "mirror_rosetta_integration"
@@ -209,7 +209,7 @@ func createPostgresDb(pool *dockertest.Pool, network *dockertest.Network) (*dock
 	options := &dockertest.RunOptions{
 		Name:       getDbHostname(network.Network),
 		Repository: "postgres",
-		Tag:        "13",
+		Tag:        "9.6-alpine",
 		Env:        env,
 		Networks:   []*dockertest.Network{network},
 	}
@@ -232,7 +232,7 @@ func runFlywayMigration(pool *dockertest.Pool, network *dockertest.Network, para
 	// run the container with tty and entrypoint "bin/sh" so it will stay alive in background
 	options := &dockertest.RunOptions{
 		Repository: "flyway/flyway",
-		Tag:        "8.0.4-alpine",
+		Tag:        "7.15.0-alpine",
 		Entrypoint: []string{"/bin/sh"},
 		Networks:   []*dockertest.Network{network},
 		Mounts:     []string{migrationPath + ":/flyway/sql"},

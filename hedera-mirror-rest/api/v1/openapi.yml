@@ -57,8 +57,8 @@ paths:
       operationId: listAccountBalances
       parameters:
         - $ref: '#/components/parameters/accountIdQueryParam'
-        - $ref: '#/components/parameters/balanceQueryParam'
-        - $ref: '#/components/parameters/orderQueryParam'
+        - $ref: '#/components/parameters/accountBalanceQueryParam'
+        - $ref: '#/components/parameters/orderQueryParamDesc'
         - $ref: '#/components/parameters/accountPublicKeyQueryParam'
         - $ref: '#/components/parameters/timestampQueryParam'
         - $ref: '#/components/parameters/limitQueryParam'
@@ -81,7 +81,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/contractIdQueryParam'
         - $ref: '#/components/parameters/limitQueryParam'
-        - $ref: '#/components/parameters/orderQueryParam'
+        - $ref: '#/components/parameters/orderQueryParamDesc'
       responses:
         200:
           description: OK
@@ -123,7 +123,7 @@ paths:
         - $ref: '#/components/parameters/contractIdPathParam'
         - $ref: '#/components/parameters/fromQueryParam'
         - $ref: '#/components/parameters/limitQueryParam'
-        - $ref: '#/components/parameters/orderQueryParam'
+        - $ref: '#/components/parameters/orderQueryParamDesc'
         - $ref: '#/components/parameters/timestampQueryParam'
       responses:
         200:
@@ -132,6 +132,78 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ContractResultsResponse'
+        400:
+          $ref: '#/components/responses/InvalidParameterError'
+      tags:
+        - contracts
+  /api/v1/contracts/{contractId}/results/{timestamp}:
+    get:
+      summary: Get the contract result from a contract on the network executed at a given timestamp
+      description: Returns a single ContractResult for a contract's function executions at a specific timestamp.
+      operationId: getContractResultByIdAndTimestamp
+      parameters:
+        - $ref: '#/components/parameters/contractIdPathParam'
+        - $ref: '#/components/parameters/timestampPathParam'
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractResultResponse'
+        400:
+          $ref: '#/components/responses/InvalidParameterError'
+        404:
+          $ref: '#/components/responses/NotFoundError'
+      tags:
+        - contracts
+  /api/v1/contracts/results/{transactionId}:
+    get:
+      summary: Get the contract result from a contract on the network for a given transactionId
+      description: Returns a single ContractResult for a contract's function executions for a given transactionId.
+      operationId: getContractResultByTransactionId
+      parameters:
+        - $ref: '#/components/parameters/transactionIdPathParam'
+        - $ref: '#/components/parameters/nonceQueryParamWithDefault'
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractResultResponse'
+        400:
+          $ref: '#/components/responses/InvalidParameterError'
+        404:
+          $ref: '#/components/responses/NotFoundError'
+      tags:
+        - contracts
+  /api/v1/contracts/{contractId}/results/logs:
+    get:
+      summary: List contract logs from a contract on the network
+      description: >
+        Search the logs of a specific contract across multiple contract calls. Chained logs are not
+        included but can be found by calling `/api/v1/contracts/{contractId}/results/{timestamp}`
+        or `/api/v1/contracts/results/{transactionId}`. When searching by topic a timestamp parameter must be supplied
+        and span a time range of at most seven days.
+      operationId: listContractLogs
+      parameters:
+        - $ref: '#/components/parameters/contractIdPathParam'
+        - $ref: '#/components/parameters/logIndexQueryParam'
+        - $ref: '#/components/parameters/limitQueryParam'
+        - $ref: '#/components/parameters/orderQueryParam'
+        - $ref: '#/components/parameters/timestampQueryParam'
+        - $ref: '#/components/parameters/logTopic0QueryParam'
+        - $ref: '#/components/parameters/logTopic1QueryParam'
+        - $ref: '#/components/parameters/logTopic2QueryParam'
+        - $ref: '#/components/parameters/logTopic3QueryParam'
+      responses:
+        200:
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ContractLogsResponse'
         400:
           $ref: '#/components/responses/InvalidParameterError'
       tags:
@@ -203,9 +275,10 @@ paths:
       description: Lists transactions on the network. This includes successful and unsuccessful transactions.
       operationId: listTransactions
       parameters:
-        - $ref: '#/components/parameters/timestampQueryParam'
-        - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/accountIdQueryParam'
+        - $ref: '#/components/parameters/limitQueryParam'
+        - $ref: '#/components/parameters/orderQueryParamDesc'
+        - $ref: '#/components/parameters/timestampQueryParam'
         - $ref: '#/components/parameters/transactionTypeQueryParam'
         - name: result
           in: query
@@ -235,13 +308,8 @@ paths:
       operationId: getTransactionById
       parameters:
         - $ref: '#/components/parameters/transactionIdPathParam'
-        - name: scheduled
-          in: query
-          description: >-
-            Filter transactions by the scheduled flag. If true, return only the scheduled transaction. If false, return
-            non-scheduled transactions. If not present, return all transactions matching transactionId.
-          schema:
-            type: boolean
+        - $ref: '#/components/parameters/nonceQueryParam'
+        - $ref: '#/components/parameters/scheduledQueryParam'
       responses:
         200:
           description: OK
@@ -262,14 +330,8 @@ paths:
       operationId: getStateproofInfo
       parameters:
         - $ref: '#/components/parameters/transactionIdPathParam'
-        - name: scheduled
-          in: query
-          description: >-
-            Filter stateproof by the transaction scheduled flag. If true, return stateproof for the scheduled
-            transaction. If false, return stateproof for the non-scheduled transaction.
-          schema:
-            type: boolean
-            default: false
+        - $ref: '#/components/parameters/nonceQueryParamWithDefault'
+        - $ref: '#/components/parameters/scheduledQueryParamWithDefault'
       responses:
         200:
           description: OK
@@ -304,7 +366,7 @@ paths:
           schema:
             type: string
         - $ref: '#/components/parameters/limitQueryParam'
-        - $ref: '#/components/parameters/orderQueryParam'
+        - $ref: '#/components/parameters/orderQueryParamDesc'
       responses:
         200:
           description: OK
@@ -351,14 +413,7 @@ paths:
       description: Returns a topic message the given the consensusTimestamp.
       operationId: getTopicMessagesByConsensusTimestamp
       parameters:
-        - name: consensusTimestamp
-          in: path
-          required: true
-          description: Consensus timestamp of topic message
-          example: 1234567890
-          schema:
-            type: number
-            format: float
+        - $ref: '#/components/parameters/timestampPathParam'
       responses:
         200:
           description: OK
@@ -532,7 +587,7 @@ paths:
       parameters:
         - $ref: '#/components/parameters/tokenIdPathParam'
         - $ref: '#/components/parameters/accountIdQueryParam'
-        - $ref: '#/components/parameters/balanceQueryParam'
+        - $ref: '#/components/parameters/accountBalanceQueryParam'
         - $ref: '#/components/parameters/orderQueryParam'
         - $ref: '#/components/parameters/accountPublicKeyQueryParam'
         - $ref: '#/components/parameters/timestampQueryParam'
@@ -555,10 +610,10 @@ paths:
       description: Returns a list of non-fungible tokens
       operationId: listNfts
       parameters:
+        - $ref: '#/components/parameters/tokenIdPathParam'
         - $ref: '#/components/parameters/accountIdQueryParam'
         - $ref: '#/components/parameters/limitQueryParam'
         - $ref: '#/components/parameters/orderQueryParam'
-        - $ref: '#/components/parameters/tokenIdPathParam'
       responses:
         200:
           description: OK
@@ -566,12 +621,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Nfts'
-        204:
-          description: No Content
-          content:
-            application/json:
-              schema:
-                type: object
         400:
           $ref: '#/components/responses/InvalidParameterError'
         404:
@@ -584,8 +633,8 @@ paths:
       description: Returns information for a non-fungible token
       operationId: listNftBySerialnumber
       parameters:
-        - $ref: '#/components/parameters/serialNumberPathParam'
         - $ref: '#/components/parameters/tokenIdPathParam'
+        - $ref: '#/components/parameters/serialNumberPathParam'
       responses:
         200:
           description: OK
@@ -605,8 +654,8 @@ paths:
       description: Returns a list of transactions for a given non-fungible token
       operationId: listNftTransactions
       parameters:
-        - $ref: '#/components/parameters/serialNumberPathParam'
         - $ref: '#/components/parameters/tokenIdPathParam'
+        - $ref: '#/components/parameters/serialNumberPathParam'
       responses:
         200:
           description: OK
@@ -614,12 +663,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/NftTransactionHistory'
-        204:
-          description: No Content
-          content:
-            application/json:
-              schema:
-                type: object
         206:
           description: Partial Content
           content:
@@ -628,8 +671,6 @@ paths:
                 $ref: '#/components/schemas/NftTransactionHistory'
         400:
           $ref: '#/components/responses/InvalidParameterError'
-        404:
-          $ref: '#/components/responses/NotFoundError'
       tags:
         - tokens
 tags:
@@ -657,7 +698,7 @@ tags:
     description: The tokens object represents the information associated with a token entity and returns a list of token information.
 info:
   title: Hedera Mirror Node REST API
-  version: 0.46.0-SNAPSHOT
+  version: 0.48.0
   license:
     name: Apache-2.0
     url: 'https://www.apache.org/licenses/LICENSE-2.0.html'
@@ -722,6 +763,11 @@ components:
           $ref: '#/components/schemas/Contracts'
         links:
           $ref: '#/components/schemas/Links'
+    ContractResultResponse:
+      type: object
+      properties:
+        contracts:
+          $ref: '#/components/schemas/ContractResultDetails'
     ContractResultsResponse:
       type: object
       properties:
@@ -729,6 +775,11 @@ components:
           $ref: '#/components/schemas/ContractResults'
         links:
           $ref: '#/components/schemas/Links'
+    ContractLogsResponse:
+      type: object
+      properties:
+        logs:
+          $ref: '#/components/schemas/ContractLogs'
     NetworkSupplyResponse:
       type: object
       properties:
@@ -956,6 +1007,23 @@ components:
       type: array
       items:
         $ref: '#/components/schemas/Contract'
+    ContractLog:
+      allOf:
+        - $ref: '#/components/schemas/ContractResultLog'
+        - type: object
+          properties:
+            root_contract_id:
+              description: The executed contract that created this contract log
+              $ref: '#/components/schemas/EntityId'
+            timestamp:
+              $ref: '#/components/schemas/Timestamp'
+    ContractLogTopics:
+      description: A list of hex encoded topics associated with this log event
+      example:
+        - '0xf4757a49b326036464bec6fe419a4ae38c8a02ce3e68bf0809674f6aab8ad300'
+      items:
+        type: string
+      type: array
     ContractResult:
       type: object
       properties:
@@ -965,11 +1033,6 @@ components:
           format: int64
           nullable: true
           type: integer
-        bloom:
-          description: The hex encoded bloom filter for the record
-          example: "0x549358c4c2e573e02410ef7b5a5ffa5f36dd7398"
-          nullable: true
-          type: string
         call_result:
           description: The hex encoded result returned by the function
           example: "0x2b048531b38d2882e86044bc972e940ee0a01938"
@@ -979,10 +1042,8 @@ components:
           $ref: '#/components/schemas/EntityId'
         created_contract_ids:
           description: The network's released supply of hbars in tinybars
-          example:
-            - "0.0.1003"
           items:
-            type: string
+            $ref: '#/components/schemas/EntityId'
           type: array
         error_message:
           description: The message when an error occurs during smart contract execution
@@ -1009,10 +1070,61 @@ components:
           $ref: '#/components/schemas/Timestamp'
         to:
           $ref: '#/components/schemas/SolidityAddressNullable'
+    ContractResultDetails:
+      allOf:
+        - $ref: '#/components/schemas/ContractResult'
+        - type: object
+          properties:
+            block_hash:
+              description: The hex encoded block (record file chain) hash
+              example: "0x6ceecd8bb224da491"
+              nullable: true
+              type: string
+            block_number:
+              description: The block number. Since Hedera does not have the native concept of blocks, this counts the number of record files seen since the mirror node's configured start date. This can vary between mirror nodes that use different start dates.
+              example: 10
+              format: int64
+              nullable: true
+              type: integer
+            hash:
+              description: The hex encoded transaction hash
+              example: "0x3531396130303866616264653464"
+              type: string
+            logs:
+              $ref: '#/components/schemas/ContractResultLogs'
+    ContractResultLog:
+      type: object
+      properties:
+        address:
+          description: The hex encoded Solidity address of the contract
+          example: '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+          pattern: ^0x[0-9A-Fa-f]{40}$
+          type: string
+        contract_id:
+          $ref: '#/components/schemas/EntityId'
+        data:
+          description: The hex encoded data of the contract log
+          example: '0x00000000000000000000000000000000000000000000000000000000000000fa'
+          nullable: true
+          type: string
+        index:
+          description: The index of the contract log in the chain of logs for an execution
+          example: 0
+          type: integer
+        topics:
+          $ref: '#/components/schemas/ContractLogTopics'
+    ContractResultLogs:
+      type: array
+      items:
+        $ref: '#/components/schemas/ContractResultLog'
     ContractResults:
       type: array
       items:
         $ref: '#/components/schemas/ContractResult'
+    ContractLogs:
+      type: array
+      items:
+        $ref: '#/components/schemas/ContractLog'
     CustomFees:
       type: object
       properties:
@@ -1169,6 +1281,9 @@ components:
       properties:
         consensus_timestamp:
           $ref: '#/components/schemas/Timestamp'
+        nonce:
+          type: integer
+          minimum: 0
         transaction_id:
           type: string
         receiver_account_id:
@@ -1251,7 +1366,7 @@ components:
       format: binary
       minLength: 42
       maxLength: 42
-      pattern: '^0x[A-Fa-f0-9]{40}$'
+      pattern: '^(0x)?[A-Fa-f0-9]{40}$'
       example: "0x0000000000000000000000000000000000001f41"
     SolidityAddressNullable:
       type: string
@@ -1442,6 +1557,9 @@ components:
           $ref: '#/components/schemas/Key'
         custom_fees:
           $ref: '#/components/schemas/CustomFees'
+    LogTopicQueryParam:
+      type: string
+      pattern: ^(0x)?[0-9A-Fa-f]{1,64}$
     TransactionTypes:
       type: string
       enum:
@@ -1526,25 +1644,35 @@ components:
     Transaction:
       type: object
       properties:
-        consensus_timestamp:
-          $ref: '#/components/schemas/Timestamp'
-        entity_id:
-          $ref: '#/components/schemas/EntityId'
+        assessed_custom_fees:
+          type: array
+          items:
+            type: object
+            properties:
+              amount:
+                type: number
+              collector_account_id:
+                $ref: '#/components/schemas/EntityId'
+              effective_payer_account_ids:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EntityId'
+              token_id:
+                $ref: '#/components/schemas/EntityId'
         bytes:
           type: string
           format: byte
           nullable: true
-        transaction_hash:
-          type: string
-          format: byte
-        valid_start_timestamp:
-          $ref: '#/components/schemas/Timestamp'
         charged_tx_fee:
           type: number
+        consensus_timestamp:
+          $ref: '#/components/schemas/Timestamp'
+        entity_id:
+          $ref: '#/components/schemas/EntityId'
+        max_fee:
+          type: string
         memo_base64:
           nullable: true
-        result:
-          type: string
         name:
           $ref: '#/components/schemas/TransactionTypes'
         nft_transfers:
@@ -1563,28 +1691,17 @@ components:
             required:
               - serial_number
               - token_id
-        max_fee:
-          type: string
-        valid_duration_seconds:
-          type: string
         node:
           $ref: '#/components/schemas/EntityId'
+        nonce:
+          type: integer
+          minimum: 0
+        parent_consensus_timestamp:
+          $ref: '#/components/schemas/TimestampNullable'
+        result:
+          type: string
         scheduled:
           type: boolean
-        transaction_id:
-          type: string
-        transfers:
-          type: array
-          items:
-            type: object
-            properties:
-              account:
-                $ref: '#/components/schemas/EntityId'
-              amount:
-                type: number
-            required:
-              - account
-              - amount
         token_transfers:
           type: array
           items:
@@ -1600,21 +1717,27 @@ components:
               - token_id
               - account
               - amount
-        assessed_custom_fees:
+        transaction_hash:
+          type: string
+          format: byte
+        transaction_id:
+          type: string
+        transfers:
           type: array
           items:
             type: object
             properties:
+              account:
+                $ref: '#/components/schemas/EntityId'
               amount:
                 type: number
-              collector_account_id:
-                $ref: '#/components/schemas/EntityId'
-              effective_payer_account_ids:
-                type: array
-                items:
-                  $ref: '#/components/schemas/EntityId'
-              token_id:
-                $ref: '#/components/schemas/EntityId'
+            required:
+              - account
+              - amount
+        valid_duration_seconds:
+          type: string
+        valid_start_timestamp:
+          $ref: '#/components/schemas/Timestamp'
       example:
         consensus_timestamp: "1234567890.000000007"
         transaction_hash: "vigzKe2J7fv4ktHBbNTSzQmKq7Lzdq1/lJMmHT+a2KgvdhAuadlvS4eKeqKjIRmW"
@@ -1723,6 +1846,9 @@ components:
       description: The optional balance value to compare against
       explode: true
       examples:
+        noValue:
+          summary: --
+          value: ""
         noOperator:
           summary: Example of equals with no operator
           value: 100
@@ -1753,6 +1879,9 @@ components:
       description: The ID of the account to return information for
       explode: true
       examples:
+        noValue:
+          summary: --
+          value: ""
         entityNumNoOperator:
           summary: Example of entityNum equals with no operator
           value: 100
@@ -1814,9 +1943,12 @@ components:
         default: true
     contractIdQueryParam:
       name: contract.id
-      description: The ID of the contract to return information for
+      description: The ID of the smart contract
       in: query
       examples:
+        noValue:
+          summary: --
+          value: ""
         entityNumNoOperator:
           summary: Example of entityNum equals with no operator
           value: 100
@@ -1861,31 +1993,90 @@ components:
           value: lte:0.0.700
       schema:
         $ref: '#/components/schemas/EntityIdQuery'
+    # Path parameters for different IDs.
     contractIdPathParam:
       name: contractId
       in: path
       required: true
-      description: Contract entity id
+      description: Contract id
+      schema:
+        $ref: '#/components/schemas/EntityId'
+    entityIdPathParam:
+      name: entityId
+      in: path
+      required: true
+      description: Entity id
+      schema:
+        $ref: '#/components/schemas/EntityId'
+    scheduleIdPathParam:
+      name: scheduleId
+      in: path
+      required: true
+      description: Schedule id
+      schema:
+        $ref: '#/components/schemas/EntityId'
+    tokenIdPathParam:
+      name: tokenId
+      in: path
+      required: true
+      description: Token id
+      schema:
+        $ref: '#/components/schemas/EntityId'
+    topicIdPathParam:
+      name: topicId
+      in: path
+      required: true
+      description: Topic id
       schema:
         $ref: '#/components/schemas/EntityId'
     fromQueryParam:
-      name: contractId
+      name: from
       in: query
-      description: Contract entity id or address
+      description: Account ID or solidity address executing the contract
       schema:
         oneOf:
           - $ref: '#/components/schemas/EntityId'
           - $ref: '#/components/schemas/SolidityAddress'
+    logIndexQueryParam:
+      name: index
+      in: query
+      description: Contract log index
+      schema:
+        type: integer
+        minimum: 0
     limitQueryParam:
       name: limit
       in: query
-      description: The limit of items to return
+      description: The maximimum number of items to return
       example: 2
       schema:
         type: integer
         default: 25
         minimum: 1
         maximum: 100
+    nonceQueryParam:
+      name: nonce
+      in: query
+      description: >-
+        Filter the query result by the nonce of the transaction. A zero nonce represents user submitted transactions
+        while a non-zero nonce is generated by main nodes. The filter honors the last value. If not specified,
+        all transactions with specified payer account ID and valid start timestamp match.
+      example: 0
+      schema:
+        type: integer
+        minimum: 0
+    nonceQueryParamWithDefault:
+      name: nonce
+      in: query
+      description: >-
+        Filter the query result by the nonce of the transaction. A zero nonce represents user submitted transactions
+        while a non-zero nonce is generated by main nodes. The filter honors the last value. Default is 0 when
+        not specified.
+      example: 1
+      schema:
+        type: integer
+        default: 0
+        minimum: 0
     orderQueryParam:
       name: order
       in: query
@@ -1894,6 +2085,14 @@ components:
       schema:
         enum: [ asc, desc ]
         default: asc
+    orderQueryParamDesc:
+      name: order
+      in: query
+      description: The order in which items are listed
+      example: asc
+      schema:
+        enum: [ asc, desc ]
+        default: desc
     publicKeyQueryParam:
       name: publickey
       in: query
@@ -1901,19 +2100,32 @@ components:
       example: 3c3d546321ff6f63d701d2ec5c277095874e19f4a235bee1e6bb19258bf362be
       schema:
         type: string
-    scheduleIdPathParam:
-      name: scheduleId
-      in: path
-      required: true
-      description: Schedule entity id
-      example: 0.0.2035
+    scheduledQueryParam:
+      name: scheduled
+      in: query
+      description: >-
+        Filter transactions by the scheduled flag. If true, return information for the scheduled transaction. If false,
+        return information for the non-scheduled transaction. If not present, return information for all transactions
+        matching transactionId.
       schema:
-        type: string
+        type: boolean
+    scheduledQueryParamWithDefault:
+      name: scheduled
+      in: query
+      description: >-
+        Filter transactions by the scheduled flag. If true, return information for the scheduled transaction.
+        If false, return information for the non-scheduled transaction.
+      schema:
+        type: boolean
+        default: false
     scheduleIdQueryParam:
       name: schedule.id
       description: The ID of the schedule to return information for
       in: query
       examples:
+        noValue:
+          summary: --
+          value: ""
         entityNumNoOperator:
           summary: Example of entityNum equals with no operator
           value: 100
@@ -1982,10 +2194,14 @@ components:
         minimum: 1
         maximum: 9223372036854775807
     timestampQueryParam:
+      description: The consensus timestamp in seconds.nanoseconds format with an optional comparison operator
       name: timestamp
       in: query
       explode: true
       examples:
+        noValue:
+          summary: --
+          value: ""
         secondsNoOperator:
           summary: Example of seconds equals with no operator
           value: 1234567890
@@ -2033,11 +2249,23 @@ components:
         items:
           type: string
           pattern: ^((eq|gt|gte|lt|lte|ne):)?\d{1,10}(.\d{1,9})?$
+    timestampPathParam:
+      name: timestamp
+      in: path
+      description: The timestamp at which the associated transaction reached consensus
+      required: true
+      example: 1234567890.000000700
+      schema:
+        type: string
+        pattern: ^\d{1,10}(.\d{1,9})?$
     tokenInfoTimestampQueryParam:
       name: timestamp
       in: query
       explode: true
       examples:
+        noValue:
+          summary: --
+          value: ""
         secondsNoOperator:
           summary: Example of seconds equals with no operator
           value: 1234567890
@@ -2065,6 +2293,34 @@ components:
       schema:
         type: string
         pattern: ^((eq|lt|lte):)?\d{1,10}(.\d{1,9})?$
+    logTopic0QueryParam:
+      name: topic0
+      in: query
+      description: The first topic associated with a contract log. Requires a timestamp range also be populated.
+      example: 0x5908baf1fe6ba0149e9bf0af1346476940e92be2436cfccbe428b71009767a10
+      schema:
+        $ref: '#/components/schemas/LogTopicQueryParam'
+    logTopic1QueryParam:
+      name: topic1
+      in: query
+      description: The second topic associated with a contract log. Requires a timestamp range also be populated.
+      example: 0x5908baf1fe6ba0149e9bf0af1346476940e92be2436cfccbe428b71009767a10
+      schema:
+        $ref: '#/components/schemas/LogTopicQueryParam'
+    logTopic2QueryParam:
+      name: topic2
+      in: query
+      description: The third topic associated with a contract log. Requires a timestamp range also be populated.
+      example: 0x5908baf1fe6ba0149e9bf0af1346476940e92be2436cfccbe428b71009767a10
+      schema:
+        $ref: '#/components/schemas/LogTopicQueryParam'
+    logTopic3QueryParam:
+      name: topic3
+      in: query
+      description: The fourth topic associated with a contract log. Requires a timestamp range also be populated.
+      example: 0x5908baf1fe6ba0149e9bf0af1346476940e92be2436cfccbe428b71009767a10
+      schema:
+        $ref: '#/components/schemas/LogTopicQueryParam'
     transactionTypeQueryParam:
       name: transactiontype
       in: query
@@ -2084,6 +2340,9 @@ components:
       description: The ID of the token to return information for
       in: query
       examples:
+        noValue:
+          summary: --
+          value: ""
         entityNumNoOperator:
           summary: Example of entityNum equals with no operator
           value: 100
@@ -2128,14 +2387,6 @@ components:
           value: lte:0.0.700
       schema:
         $ref: '#/components/schemas/EntityIdQuery'
-    tokenIdPathParam:
-      name: tokenId
-      in: path
-      required: true
-      description: Token entity id
-      example: 0.0.1135
-      schema:
-        type: string
     tokenTypeQueryParam:
       name: type
       in: query
@@ -2148,11 +2399,3 @@ components:
         type: array
         items:
           type: string
-    topicIdPathParam:
-      name: topicId
-      in: path
-      required: true
-      description: Topic entity id
-      example: 0.2.3
-      schema:
-        type: string

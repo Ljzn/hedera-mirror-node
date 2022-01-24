@@ -108,10 +108,9 @@ spring:
     show-sql: false
   lifecycle:
     timeout-per-shutdown-phase: 20s
+  main:
+    allow-circular-references: true  # flywayInitializer -> java migrations -> jdbcTemplate -> flywayInitializer
   task:
     scheduling:
       pool:
         size: 6
-  test:
-    database:
-      replace: NONE

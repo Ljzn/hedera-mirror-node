@@ -36,7 +36,7 @@ const {InvalidArgumentError} = require('./errors/invalidArgumentError');
 const {NotFoundError} = require('./errors/notFoundError');
 
 // models
-const {CustomFee, Nft, NftTransfer, Token, Transaction, TransactionResult, TransactionType} = require('./model');
+const {CustomFee, Entity, Nft, NftTransfer, Token, Transaction, TransactionType} = require('./model');
 
 // middleware
 const {httpStatusCodes} = require('./constants');
@@ -447,8 +447,8 @@ const extractSqlFromTokenInfoRequest = (tokenId, filters) => {
   }, ${CustomFee.ROYALTY_NUMERATOR})
     from ${CustomFee.tableName} ${CustomFee.tableAlias}
     where ${conditions.join(' and ')}
-    group by ${CustomFee.CREATED_TIMESTAMP_FULL_NAME}
-    order by ${CustomFee.CREATED_TIMESTAMP_FULL_NAME} desc
+    group by ${CustomFee.getFullName(CustomFee.CREATED_TIMESTAMP)}
+    order by ${CustomFee.getFullName(CustomFee.CREATED_TIMESTAMP)} desc
     limit 1
   `;
 
@@ -722,14 +722,6 @@ const getNftTokensRequest = async (req, res) => {
     },
   };
 
-  // handle filter case with no returns
-  if (_.isEmpty(rows) && !_.isEmpty(filters)) {
-    res.locals.statusCode = httpStatusCodes.NO_CONTENT.code;
-    res.locals[constants.responseDataLabel] = response;
-    logger.debug(`getNftTokens returning no content`);
-    return;
-  }
-
   response.nfts = rows.map((row) => {
     const nftModel = new Nft(row);
     return new NftViewModel(nftModel);
@@ -794,33 +786,34 @@ const getTokenInfo = async (query, params) => {
   return rows[0];
 };
 
-const tokenDeleteTransactionType = 'TOKENDELETION';
-
 /**
  * Extracts SQL query, params, order, and limit
- * Combine NFT CREATION and TRANSFERS details fron nft_transfer with DELETION details from nft
+ * Combine NFT transfers (mint, transfer, wipe account, burn) details from nft_transfer with DELETION details from nft
  *
  * @param {string} tokenId encoded token ID
  * @param {string} serialNumber nft serial number
- * @param {string} transferQuery pg SQL query for transfers
- * @param {string} deleteQuery pg SQL query for deletion transaction
  * @param {[]} filters parsed and validated filters
  * @return {{query: string, limit: number, params: [], order: 'asc'|'desc'}}
  */
-const extractSqlFromNftTransferHistoryRequest = (tokenId, serialNumber, transferQuery, deleteQuery, filters) => {
+const extractSqlFromNftTransferHistoryRequest = (tokenId, serialNumber, filters) => {
   let limit = defaultLimit;
   let order = constants.orderFilterValues.DESC;
 
   const params = [tokenId, serialNumber];
-  const transferConditions = [`${NftTransfer.TOKEN_ID_FULL_NAME} = $1`, `${NftTransfer.SERIAL_NUMBER_FULL_NAME} = $2`];
-
-  const deleteConditions = [
-    `${Transaction.ENTITY_ID_FULL_NAME} = $1`,
-    `${Transaction.TYPE_FULL_NAME} = ${TransactionType.getProtoId(tokenDeleteTransactionType)}`,
-    `${Transaction.RESULT_FULL_NAME} = ${TransactionResult.getSuccessProtoId()}`,
+  // if the nft token class is deleted, the lower of the timestamp_range is the consensus timestamp of the token
+  // delete transaction
+  const tokenDeleteTimestampQuery = `select lower(${Entity.TIMESTAMP_RANGE})
+                                     from ${Entity.tableName}
+                                     where ${Entity.ID} = $1
+                                       and ${Entity.DELETED} is true`;
+  const tokenDeleteConditions = [`${Transaction.CONSENSUS_TIMESTAMP} = (${tokenDeleteTimestampQuery})`];
+  const transferConditions = [
+    `${NftTransfer.getFullName(NftTransfer.TOKEN_ID)} = $1`,
+    `${NftTransfer.getFullName(NftTransfer.SERIAL_NUMBER)} = $2`,
   ];
 
   // add applicable filters
+  const transferTimestampColumn = NftTransfer.getFullName(NftTransfer.CONSENSUS_TIMESTAMP);
   for (const filter of filters) {
     switch (filter.key) {
       case constants.filterKeys.LIMIT:
@@ -829,64 +822,63 @@ const extractSqlFromNftTransferHistoryRequest = (tokenId, serialNumber, transfer
       case constants.filterKeys.ORDER:
         order = filter.value;
         break;
+      case constants.filterKeys.TIMESTAMP:
+        const paramCount = params.push(filter.value);
+        transferConditions.push(`${transferTimestampColumn} ${filter.operator} $${paramCount}`);
+        tokenDeleteConditions.push(`${Transaction.CONSENSUS_TIMESTAMP} ${filter.operator} $${paramCount}`);
+        break;
       default:
-        const transferColumnKey = NftTransfer.FILTER_MAP[filter.key];
-        const transactionColumnKey = Transaction.FILTER_MAP[filter.key];
-
-        if (filter.key === constants.filterKeys.TIMESTAMP) {
-          if (!transferColumnKey || !transactionColumnKey) {
-            break;
-          }
-
-          const paramCount = params.push(filter.value);
-          transferConditions.push(`${transferColumnKey} ${filter.operator} $${paramCount}`);
-          deleteConditions.push(`${transactionColumnKey} ${filter.operator} $${paramCount}`);
-        }
-
         break;
     }
   }
 
-  const joinTransactionClause = `join ${Transaction.tableName} ${Transaction.tableAlias}
-    on ${NftTransfer.CONSENSUS_TIMESTAMP_FULL_NAME} = ${Transaction.CONSENSUS_TIMESTAMP_FULL_NAME}`;
-
-  const transferWhereQuery = `where ${transferConditions.join('\nand ')}`;
-
+  // the query planner may not be able to push the limit in the main query to the cte, thus adding the order and limit
+  // here to optimize the performance for nfts with a lot of transfers
+  params.push(limit);
+  const limitQuery = `limit $${params.length}`;
   const serialTransferCte = `serial_transfers as (
     select ${nftTransferHistoryCteSelectFields.join(',\n')}
     from ${NftTransfer.tableName} ${NftTransfer.tableAlias}
-    ${transferWhereQuery}
+    where ${transferConditions.join(' and ')}
+    order by ${NftTransfer.CONSENSUS_TIMESTAMP} ${order}
+    ${limitQuery}
   )`;
 
+  const joinTransactionClause = `join ${Transaction.tableName} ${Transaction.tableAlias}
+    on ${transferTimestampColumn} = ${Transaction.getFullName(Transaction.CONSENSUS_TIMESTAMP)}`;
   const tokenTransactionCte = `token_transactions as (
     select ${nftTransferHistorySelectFields.join(',\n')}
     from serial_transfers ${NftTransfer.tableAlias}
-    ${joinTransactionClause} and ${NftTransfer.TOKEN_ID_FULL_NAME} = ${Transaction.ENTITY_ID_FULL_NAME}
+    ${joinTransactionClause}
   )`;
 
-  const tokenTransferCte = `token_transfers as (
-    select ${nftTransferHistorySelectFields.join(',\n')}
-    from serial_transfers ${NftTransfer.tableAlias}
-    ${joinTransactionClause} and ${Transaction.ENTITY_ID_FULL_NAME} is null
+  const tokenDeletionCte = `token_deletion as (
+    select
+      ${Transaction.CONSENSUS_TIMESTAMP},
+      ${Transaction.NONCE},
+      ${Transaction.PAYER_ACCOUNT_ID},
+      ${Transaction.TYPE},
+      ${Transaction.VALID_START_NS}
+    from ${Transaction.tableName}
+    where ${tokenDeleteConditions.join(' and ')}
   )`;
 
-  const cteQuery = `with ${serialTransferCte}, ${tokenTransactionCte}, ${tokenTransferCte}
-  select * from token_transactions
-  union
-  select * from token_transfers`;
+  const query = `with ${serialTransferCte}, ${tokenTransactionCte}, ${tokenDeletionCte}
+    select * from token_transactions
+    union
+    select
+      ${Transaction.CONSENSUS_TIMESTAMP},
+      null as ${NftTransfer.RECEIVER_ACCOUNT_ID},
+      null as ${NftTransfer.SENDER_ACCOUNT_ID},
+      ${Transaction.NONCE},
+      ${Transaction.PAYER_ACCOUNT_ID},
+      ${Transaction.TYPE},
+      ${Transaction.VALID_START_NS}
+    from token_deletion
+    order by ${Transaction.CONSENSUS_TIMESTAMP} ${order}
+    ${limitQuery}`;
 
-  const unionQuery = `union\n${deleteQuery}`;
-
-  const deleteWhereCondition = `where ${deleteConditions.join('\nand ')}`;
-
-  const orderQuery = `order by ${NftTransfer.CONSENSUS_TIMESTAMP} ${order}`;
-  const limitQuery = `limit $${params.push(limit)}`;
-
-  const finalQuery = [cteQuery, unionQuery, deleteWhereCondition, orderQuery, limitQuery]
-    .filter((q) => q !== '')
-    .join('\n');
-
-  return utils.buildPgSqlObject(finalQuery, params, order, limit);
+  return utils.buildPgSqlObject(query, params, order, limit);
 };
 
 const formatNftHistoryRow = (row) => {
@@ -896,38 +888,20 @@ const formatNftHistoryRow = (row) => {
 };
 
 const nftTransferHistorySelectFields = [
-  NftTransfer.CONSENSUS_TIMESTAMP_FULL_NAME,
-  Transaction.PAYER_ACCOUNT_ID_FULL_NAME,
-  Transaction.VALID_START_NS_FULL_NAME,
-  NftTransfer.RECEIVER_ACCOUNT_ID_FULL_NAME,
-  NftTransfer.SENDER_ACCOUNT_ID_FULL_NAME,
-  Transaction.TYPE_FULL_NAME,
+  NftTransfer.getFullName(NftTransfer.CONSENSUS_TIMESTAMP),
+  NftTransfer.getFullName(NftTransfer.RECEIVER_ACCOUNT_ID),
+  NftTransfer.getFullName(NftTransfer.SENDER_ACCOUNT_ID),
+  Transaction.getFullName(Transaction.NONCE),
+  Transaction.getFullName(Transaction.PAYER_ACCOUNT_ID),
+  Transaction.getFullName(Transaction.TYPE),
+  Transaction.getFullName(Transaction.VALID_START_NS),
 ];
-const nftTransferHistorySelectQuery = [
-  'select',
-  nftTransferHistorySelectFields.join(',\n'),
-  `from ${NftTransfer.tableName} ${NftTransfer.tableAlias}`,
-].join('\n');
-
-const nftDeleteHistorySelectFields = [
-  `${Transaction.CONSENSUS_TIMESTAMP_FULL_NAME} as ${NftTransfer.CONSENSUS_TIMESTAMP}`,
-  Transaction.PAYER_ACCOUNT_ID_FULL_NAME,
-  Transaction.VALID_START_NS_FULL_NAME,
-  `null as ${NftTransfer.RECEIVER_ACCOUNT_ID}`,
-  `null as ${NftTransfer.SENDER_ACCOUNT_ID}`,
-  Transaction.TYPE_FULL_NAME,
-];
-const nftDeleteHistorySelectQuery = [
-  'select',
-  nftDeleteHistorySelectFields.join(',\n'),
-  `from ${Transaction.tableName} ${Transaction.tableAlias}`,
-].join('\n');
 
 const nftTransferHistoryCteSelectFields = [
-  NftTransfer.CONSENSUS_TIMESTAMP_FULL_NAME,
-  NftTransfer.RECEIVER_ACCOUNT_ID_FULL_NAME,
-  NftTransfer.SENDER_ACCOUNT_ID_FULL_NAME,
-  NftTransfer.TOKEN_ID_FULL_NAME,
+  NftTransfer.CONSENSUS_TIMESTAMP,
+  NftTransfer.RECEIVER_ACCOUNT_ID,
+  NftTransfer.SENDER_ACCOUNT_ID,
+  NftTransfer.TOKEN_ID,
 ];
 
 /**
@@ -942,13 +916,7 @@ const getNftTransferHistoryRequest = async (req, res) => {
 
   const filters = utils.buildAndValidateFilters(req.query, validateTokenQueryFilter);
 
-  const {query, params, limit, order} = extractSqlFromNftTransferHistoryRequest(
-    tokenId,
-    serialNumber,
-    nftTransferHistorySelectQuery,
-    nftDeleteHistorySelectQuery,
-    filters
-  );
+  const {query, params, limit, order} = extractSqlFromNftTransferHistoryRequest(tokenId, serialNumber, filters);
   if (logger.isTraceEnabled()) {
     logger.trace(`getNftTransferHistory query: ${query} ${JSON.stringify(params)}`);
   }
@@ -960,18 +928,6 @@ const getNftTransferHistoryRequest = async (req, res) => {
       next: null,
     },
   };
-
-  if (_.isEmpty(rows)) {
-    if (_.isEmpty(filters)) {
-      throw new NotFoundError(); // 404 if no transactions are present
-    } else {
-      // 204 if no transactions are present but filters were applied
-      res.locals.statusCode = httpStatusCodes.NO_CONTENT.code;
-      res.locals[constants.responseDataLabel] = response;
-      logger.debug(`getNftTransferHistory returning no content`);
-      return;
-    }
-  }
 
   response.transactions = rows.map((row) => formatNftHistoryRow(row));
 
@@ -989,12 +945,14 @@ const getNftTransferHistoryRequest = async (req, res) => {
   logger.debug(`getNftTransferHistory returning ${response.transactions.length} entries`);
   res.locals[constants.responseDataLabel] = response;
 
-  // check if nft exists
-  const nft = await NftService.getNft(tokenId, serialNumber);
-  if (nft === null) {
-    // set 206 partial response
-    res.locals.statusCode = httpStatusCodes.PARTIAL_CONTENT.code;
-    logger.debug(`getNftTransferHistory returning partial content`);
+  if (response.transactions.length > 0) {
+    // check if nft exists
+    const nft = await NftService.getNft(tokenId, serialNumber);
+    if (nft === null) {
+      // set 206 partial response
+      res.locals.statusCode = httpStatusCodes.PARTIAL_CONTENT.code;
+      logger.debug(`getNftTransferHistory returning partial content`);
+    }
   }
 };
 
@@ -1016,12 +974,11 @@ if (utils.isTestEnv()) {
     extractSqlFromNftTokenInfoRequest,
     extractSqlFromNftTokensRequest,
     extractSqlFromTokenBalancesRequest,
+    formatNftHistoryRow,
     formatTokenBalanceRow,
     formatTokenInfoRow,
     formatTokenRow,
     nftSelectQuery,
-    nftDeleteHistorySelectQuery,
-    nftTransferHistorySelectQuery,
     tokenAccountCte,
     tokenAccountJoinQuery,
     tokenBalancesSelectQuery,

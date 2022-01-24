@@ -29,7 +29,7 @@ const {
 } = require('../config');
 const {opsMap} = require('../utils');
 const utils = require('../utils');
-const {formatSqlQueryString} = require('./testutils');
+const {assertSqlQueryEqual} = require('./testutils');
 const constants = require('../constants');
 
 describe('token formatTokenRow tests', () => {
@@ -286,11 +286,71 @@ const verifyExtractSqlFromTokenRequest = (
     extraConditions
   );
 
-  expect(formatSqlQueryString(query)).toStrictEqual(formatSqlQueryString(expectedquery));
+  assertSqlQueryEqual(query, expectedquery);
   expect(params).toStrictEqual(expectedparams);
   expect(order).toStrictEqual(expectedorder);
   expect(limit).toStrictEqual(expectedlimit);
 };
+
+describe('token formatNftHistoryRow', () => {
+  const defaultRow = {
+    consensus_timestamp: '123456000987654',
+    nonce: 0,
+    payer_account_id: '500',
+    receiver_account_id: '2000',
+    sender_account_id: '3000',
+    type: 14,
+    valid_start_ns: '123450000111222',
+  };
+  const expected = {
+    consensus_timestamp: '123456.000987654',
+    nonce: 0,
+    receiver_account_id: '0.0.2000',
+    sender_account_id: '0.0.3000',
+    transaction_id: '0.0.500-123450-000111222',
+    type: 'CRYPTOTRANSFER',
+  };
+
+  const testSpecs = [
+    {
+      name: 'default',
+      row: defaultRow,
+      expected: expected,
+    },
+    {
+      name: 'nonce',
+      row: {
+        ...defaultRow,
+        nonce: 1,
+      },
+      expected: {
+        ...expected,
+        nonce: 1,
+      },
+    },
+    {
+      name: 'tokendeletion',
+      row: {
+        ...defaultRow,
+        receiver_account_id: null,
+        sender_account_id: null,
+        type: 35,
+      },
+      expected: {
+        ...expected,
+        receiver_account_id: null,
+        sender_account_id: null,
+        type: 'TOKENDELETION',
+      },
+    },
+  ];
+
+  for (const testSpec of testSpecs) {
+    test(testSpec.name, () => {
+      expect(tokens.formatNftHistoryRow(testSpec.row)).toEqual(testSpec.expected);
+    });
+  }
+});
 
 describe('token formatTokenBalanceRow tests', () => {
   test('Verify formatTokenBalanceRow', () => {
@@ -651,10 +711,14 @@ describe('token extractSqlFromTokenBalancesRequest tests', () => {
     const {name, tokenId, initialQuery, filters, expected} = spec;
     test(name, () => {
       const actual = tokens.extractSqlFromTokenBalancesRequest(tokenId, initialQuery, filters);
-
-      actual.query = formatSqlQueryString(actual.query);
-      expected.query = formatSqlQueryString(expected.query);
-      expect(actual).toEqual(expected);
+      assertSqlQueryEqual(actual.query, expected.query);
+      expect(actual).toEqual(
+        expect.objectContaining({
+          params: spec.expected.params,
+          order: spec.expected.order,
+          limit: spec.expected.limit,
+        })
+      );
     });
   }
 });
@@ -929,7 +993,7 @@ describe('token extractSqlFromNftTokensRequest tests', () => {
   ) => {
     const {query, params, order, limit} = tokens.extractSqlFromNftTokensRequest(tokenId, pgSqlQuery, filters);
 
-    expect(formatSqlQueryString(query)).toStrictEqual(formatSqlQueryString(expectedquery));
+    assertSqlQueryEqual(query, expectedquery);
     expect(params).toStrictEqual(expectedparams);
     expect(order).toStrictEqual(expectedorder);
     expect(limit).toStrictEqual(expectedlimit);
@@ -1108,7 +1172,7 @@ describe('token extractSqlFromNftTokenInfoRequest tests', () => {
   ) => {
     const {query, params} = tokens.extractSqlFromNftTokenInfoRequest(tokenId, serialNumber, pgSqlQuery, filters);
 
-    expect(formatSqlQueryString(query)).toStrictEqual(formatSqlQueryString(expectedquery));
+    assertSqlQueryEqual(query, expectedquery);
     expect(params).toStrictEqual(expectedparams);
   };
 
@@ -1176,218 +1240,106 @@ describe('token validateTokenIdParam tests', () => {
 });
 
 describe('token extractSqlFromNftTransferHistoryRequest tests', () => {
-  const verifyExtractSqlFromNftTransferHistoryRequest = (
-    tokenId,
-    serialNumber,
-    transferQuery,
-    deletedQuery,
-    expectedQuery,
-    expectedParams,
-    filters
-  ) => {
-    const {query, params} = tokens.extractSqlFromNftTransferHistoryRequest(
-      tokenId,
-      serialNumber,
-      transferQuery,
-      deletedQuery,
-      filters
+  const getExpectedQuery = (order = orderFilterValues.DESC, timestampFilters = []) => {
+    let paramIndex = 3;
+    const transferTimestampCondition = timestampFilters
+      .map((f) => `nft_tr.consensus_timestamp ${f.operator} $${paramIndex++}`)
+      .join(' and ');
+    const deleteTimestampCondition = transferTimestampCondition.replace(
+      'nft_tr.consensus_timestamp',
+      'consensus_timestamp'
     );
-
-    expect(formatSqlQueryString(query)).toStrictEqual(formatSqlQueryString(expectedQuery));
-    expect(params).toStrictEqual(expectedParams);
+    const limitQuery = `limit $${paramIndex}`;
+    return `with serial_transfers as (
+      select
+        consensus_timestamp,
+        receiver_account_id,
+        sender_account_id,
+        token_id
+      from nft_transfer nft_tr
+      where nft_tr.token_id = $1 and nft_tr.serial_number = $2
+        ${(transferTimestampCondition && ' and ' + transferTimestampCondition) || ''}
+      order by consensus_timestamp ${order}
+      ${limitQuery}
+    ), token_transactions as (
+      select
+        nft_tr.consensus_timestamp,
+        nft_tr.receiver_account_id,
+        nft_tr.sender_account_id,
+        t.nonce,
+        t.payer_account_id,
+        t.type,
+        t.valid_start_ns
+      from serial_transfers nft_tr
+      join transaction t
+      on nft_tr.consensus_timestamp = t.consensus_timestamp
+    ), token_deletion as (
+      select
+        consensus_timestamp,
+        nonce,
+        payer_account_id,
+        type,
+        valid_start_ns
+      from transaction
+      where consensus_timestamp = (
+          select lower(timestamp_range)
+          from entity
+          where id = $1 and deleted is true
+        ) ${(deleteTimestampCondition && ' and ' + deleteTimestampCondition) || ''}
+    )
+    select * from token_transactions
+    union
+    select
+      consensus_timestamp,
+      null as receiver_account_id,
+      null as sender_account_id,
+      nonce,
+      payer_account_id,
+      type,
+      valid_start_ns
+    from token_deletion
+    order by consensus_timestamp ${order}
+    ${limitQuery}`;
   };
 
-  test('Verify simple query', () => {
-    const tokenId = '1009'; // encoded
-    const serialNumber = '960';
-    const transferQuery = [tokens.nftTransferHistorySelectQuery].join('\n');
-    const deletedQuery = [tokens.nftDeleteHistorySelectQuery].join('\n');
-    const filters = [];
+  const tokenId = '1009'; // encoded
+  const serialNumber = '960';
 
-    const expectedQuery = `with serial_transfers as (
-        select nft_tr.consensus_timestamp,
-          nft_tr.receiver_account_id,
-          nft_tr.sender_account_id,
-          nft_tr.token_id
-        from nft_transfer nft_tr
-        where nft_tr.token_id = $1 and nft_tr.serial_number = $2
-      ),
-      token_transactions as (
-        select nft_tr.consensus_timestamp,
-          t.payer_account_id,
-          t.valid_start_ns,
-          nft_tr.receiver_account_id,
-          nft_tr.sender_account_id,
-          t.type
-        from serial_transfers nft_tr
-        join transaction t on nft_tr.consensus_timestamp = t.consensus_timestamp and nft_tr.token_id = t.entity_id
-      ),
-      token_transfers as (
-        select nft_tr.consensus_timestamp,
-          t.payer_account_id,
-          t.valid_start_ns,
-          nft_tr.receiver_account_id,
-          nft_tr.sender_account_id,
-          t.type
-        from serial_transfers nft_tr
-        join transaction t on nft_tr.consensus_timestamp = t.consensus_timestamp and t.entity_id is null
-      )
-      select *
-      from token_transactions
-      union
-      select *
-      from token_transfers
-      union
-      select t.consensus_timestamp as consensus_timestamp,
-        t.payer_account_id,
-        t.valid_start_ns,
-        null as receiver_account_id,
-        null as sender_account_id,
-        t.type
-      from transaction t
-      where t.entity_id = $1 and t.type = 35 and t.result = 22
-      order by consensus_timestamp desc
-      limit $3`;
+  test('Verify simple query', () => {
+    const expectedQuery = getExpectedQuery();
     const expectedParams = [tokenId, serialNumber, defaultLimit];
-    verifyExtractSqlFromNftTransferHistoryRequest(
-      tokenId,
-      serialNumber,
-      transferQuery,
-      deletedQuery,
-      expectedQuery,
-      expectedParams,
-      filters
-    );
+
+    const actual = tokens.extractSqlFromNftTransferHistoryRequest(tokenId, serialNumber, []);
+    assertSqlQueryEqual(actual.query, expectedQuery);
+    expect(actual.params).toStrictEqual(expectedParams);
   });
 
   test('Verify limit and order query', () => {
-    const tokenId = '1009'; // encoded
-    const serialNumber = '960';
-    const transferQuery = [tokens.nftTransferHistorySelectQuery].join('\n');
-    const deletedQuery = [tokens.nftDeleteHistorySelectQuery].join('\n');
     const limit = '3';
     const order = orderFilterValues.ASC;
     const filters = [
-      {key: filterKeys.LIMIT, operator: ' = ', value: limit},
-      {key: filterKeys.ORDER, operator: ' = ', value: order},
+      {key: filterKeys.LIMIT, operator: utils.opsMap.eq, value: limit},
+      {key: filterKeys.ORDER, operator: utils.opsMap.eq, value: order},
     ];
-    const expectedQuery = `with serial_transfers as (
-        select nft_tr.consensus_timestamp,
-          nft_tr.receiver_account_id,
-          nft_tr.sender_account_id,
-          nft_tr.token_id
-        from nft_transfer nft_tr
-        where nft_tr.token_id = $1 and nft_tr.serial_number = $2
-      ),
-      token_transactions as (
-        select nft_tr.consensus_timestamp,
-          t.payer_account_id,
-          t.valid_start_ns,
-          nft_tr.receiver_account_id,
-          nft_tr.sender_account_id,
-          t.type
-        from serial_transfers nft_tr
-        join transaction t on nft_tr.consensus_timestamp = t.consensus_timestamp and nft_tr.token_id = t.entity_id
-      ),
-      token_transfers as (
-        select nft_tr.consensus_timestamp,
-          t.payer_account_id,
-          t.valid_start_ns,
-          nft_tr.receiver_account_id,
-          nft_tr.sender_account_id,
-          t.type
-        from serial_transfers nft_tr
-        join transaction t on nft_tr.consensus_timestamp = t.consensus_timestamp and t.entity_id is null
-      )
-      select *
-      from token_transactions
-      union
-      select *
-      from token_transfers
-      union
-      select t.consensus_timestamp as consensus_timestamp,
-        t.payer_account_id,
-        t.valid_start_ns,
-        null as receiver_account_id,
-        null as sender_account_id,
-        t.type
-      from transaction t
-      where t.entity_id = $1 and t.type = 35 and t.result = 22
-      order by consensus_timestamp asc
-      limit $3`;
+
+    const expectedQuery = getExpectedQuery(order);
     const expectedParams = [tokenId, serialNumber, limit];
-    verifyExtractSqlFromNftTransferHistoryRequest(
-      tokenId,
-      serialNumber,
-      transferQuery,
-      deletedQuery,
-      expectedQuery,
-      expectedParams,
-      filters
-    );
+
+    const actual = tokens.extractSqlFromNftTransferHistoryRequest(tokenId, serialNumber, filters);
+    assertSqlQueryEqual(actual.query, expectedQuery);
+    expect(actual.params).toStrictEqual(expectedParams);
   });
 
   test('Verify timestamp query', () => {
-    const tokenId = '1009'; // encoded
-    const serialNumber = '960';
-    const transferQuery = [tokens.nftTransferHistorySelectQuery].join('\n');
-    const deletedQuery = [tokens.nftDeleteHistorySelectQuery].join('\n');
     const timestamp = 5;
-    const filters = [{key: filterKeys.TIMESTAMP, operator: ' > ', value: timestamp}];
-    const expectedQuery = `with serial_transfers as (
-        select nft_tr.consensus_timestamp,
-          nft_tr.receiver_account_id,
-          nft_tr.sender_account_id,
-          nft_tr.token_id
-        from nft_transfer nft_tr
-        where nft_tr.token_id = $1 and nft_tr.serial_number = $2 and nft_tr.consensus_timestamp > $3
-      ),
-      token_transactions as (
-        select nft_tr.consensus_timestamp,
-          t.payer_account_id,
-          t.valid_start_ns,
-          nft_tr.receiver_account_id,
-          nft_tr.sender_account_id,
-          t.type
-        from serial_transfers nft_tr
-        join transaction t on nft_tr.consensus_timestamp = t.consensus_timestamp and nft_tr.token_id = t.entity_id
-      ),
-      token_transfers as (
-        select nft_tr.consensus_timestamp,
-          t.payer_account_id,
-          t.valid_start_ns,
-          nft_tr.receiver_account_id,
-          nft_tr.sender_account_id,
-          t.type
-        from serial_transfers nft_tr
-        join transaction t on nft_tr.consensus_timestamp = t.consensus_timestamp and t.entity_id is null
-      )
-      select *
-      from token_transactions
-      union
-      select *
-      from token_transfers
-      union
-      select t.consensus_timestamp as consensus_timestamp,
-        t.payer_account_id,
-        t.valid_start_ns,
-        null as receiver_account_id,
-        null as sender_account_id,
-        t.type
-      from transaction t
-      where t.entity_id = $1 and t.type = 35 and t.result = 22 and t.consensus_timestamp > $3
-      order by consensus_timestamp desc
-      limit $4`;
+    const filters = [{key: filterKeys.TIMESTAMP, operator: utils.opsMap.gt, value: timestamp}];
+
+    const expectedQuery = getExpectedQuery(orderFilterValues.DESC, filters);
     const expectedParams = [tokenId, serialNumber, timestamp, defaultLimit];
-    verifyExtractSqlFromNftTransferHistoryRequest(
-      tokenId,
-      serialNumber,
-      transferQuery,
-      deletedQuery,
-      expectedQuery,
-      expectedParams,
-      filters
-    );
+
+    const actual = tokens.extractSqlFromNftTransferHistoryRequest(tokenId, serialNumber, filters);
+    assertSqlQueryEqual(actual.query, expectedQuery);
+    expect(actual.params).toStrictEqual(expectedParams);
   });
 });
 
@@ -1446,7 +1398,7 @@ describe('token extractSqlFromTokenInfoRequest tests', () => {
   const verifyExtractSqlFromTokenInfoRequest = (tokenId, filters, expectedQuery, expectedParams) => {
     const {query, params} = tokens.extractSqlFromTokenInfoRequest(tokenId, filters);
 
-    expect(formatSqlQueryString(query)).toStrictEqual(formatSqlQueryString(expectedQuery));
+    assertSqlQueryEqual(query, expectedQuery);
     expect(params).toStrictEqual(expectedParams);
   };
 

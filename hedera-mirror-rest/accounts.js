@@ -73,7 +73,6 @@ const entityAndBalanceFields = [
   'balance account_balance',
 ].join(',');
 const latestBalanceFilter = 'ab.consensus_timestamp = (select max(consensus_timestamp) from account_balance)';
-const latestBalanceNullableFilter = `(${latestBalanceFilter} or ab.consensus_timestamp is null)`;
 
 /**
  * Gets the query for entity fields with hbar balance info for the full outer join case.
@@ -151,8 +150,8 @@ const getEntityBalanceQuery = (
   order,
   pubKeyQuery
 ) => {
+  const balanceJoinConditions = ['ab.account_id = e.id'];
   const balanceWhereConditions = [balanceQuery.query];
-  let balanceTimestampFilter = latestBalanceFilter;
   let entityIdField = 'id'; // use 'id' from account / contract for inner and left outer joins
   let joinType = '';
   let params;
@@ -163,21 +162,20 @@ const getEntityBalanceQuery = (
   // account_balance table
   if (balanceQuery.query && pubKeyQuery.query) {
     joinType = 'inner';
+    balanceJoinConditions.push(latestBalanceFilter);
     params = [entityAccountQuery.params, pubKeyQuery.params, balanceQuery.params];
   } else if (pubKeyQuery.query) {
-    // allow null for account_balance consensus_timestamp for left outer join
-    balanceTimestampFilter = latestBalanceNullableFilter;
     joinType = 'left outer';
+    balanceJoinConditions.push(latestBalanceFilter);
     params = [entityAccountQuery.params, pubKeyQuery.params];
   } else if (balanceQuery.query) {
     entityIdField = 'account_id';
-    balanceWhereConditions.push(balanceAccountQuery.query);
+    balanceWhereConditions.push(balanceAccountQuery.query, latestBalanceFilter);
     joinType = 'right outer';
     // no entity id filter needed for account / contract for right outer join
     params = [balanceQuery.params, balanceAccountQuery.params];
   }
 
-  balanceWhereConditions.push(balanceTimestampFilter);
   const whereCondition = [
     // no entity id filter needed for account / contract for right outer join
     joinType !== 'right outer' ? entityAccountQuery.query : '',
@@ -193,7 +191,7 @@ const getEntityBalanceQuery = (
       select ${entityIdField} id,${entityAndBalanceFields}
       from (${accountContractQuery}) e
       ${joinType} join account_balance ab
-        on ab.account_id = e.id
+        on ${balanceJoinConditions.join(' and ')}
       ${whereClause}
       order by ${entityIdField} ${order}
       ${limitQuery}

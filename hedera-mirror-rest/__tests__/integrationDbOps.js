@@ -152,7 +152,7 @@ const flywayMigrate = async (dbSessionConfig) => {
       "url": "jdbc:postgresql://${dbSessionConfig.host}:${dbSessionConfig.port}/${dbSessionConfig.name}",
       "user": "${dbAdminUser}"
     },
-    "version": "7.7.3",
+    "version": "7.15.0",
     "downloads": {
       "storageDirectory": "${flywayDataPath}"
     }
@@ -198,7 +198,7 @@ const cleanupSql = fs.readFileSync(
     '..',
     'hedera-mirror-importer',
     'src',
-    'main',
+    'test',
     'resources',
     'db',
     'scripts',

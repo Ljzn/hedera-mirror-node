@@ -32,7 +32,7 @@ alertmanager:
               value: GrpcErrors
           targetMatch:
             - name: alertname
-              value: GrpcLog4j2Errors
+              value: GrpcLogErrors
           equal:
             - namespace
             - pod
@@ -64,10 +64,17 @@ global:
   podAnnotations: {}
 
 hpa:
+  behavior: {}
   enabled: false
   maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 80
   minReplicas: 1
-  utilization: 80
 
 image:
   pullPolicy: IfNotPresent
@@ -195,10 +202,10 @@ prometheusRules:
       application: hedera-mirror-grpc
       area: resource
 
-  GrpcLog4j2Errors:
+  GrpcLogErrors:
     annotations:
       description: "Logs for {{ $labels.namespace }}/{{ $labels.pod }} have reached {{ $value }} error messages/s in a 3m period"
-      summary: "High rate of log4j2 errors"
+      summary: "High rate of log errors"
     enabled: true
     expr: sum(increase(log4j2_events_total{application="hedera-mirror-grpc", level="error"}[1m])) by (namespace, pod) >= 2
     for: 3m
@@ -227,6 +234,17 @@ prometheusRules:
     for: 5m
     labels:
       severity: critical
+      application: hedera-mirror-grpc
+
+  GrpcQueryLatency:
+    annotations:
+      description: "High average database query latency of {{ $value | humanizeDuration }} for {{ $labels.namespace }}/{{ $labels.pod }}"
+      summary: "Mirror gRPC API query latency exceeds 1s"
+    enabled: true
+    expr: sum(rate(spring_data_repository_invocations_seconds_sum{application="hedera-mirror-grpc"}[5m])) by (namespace, pod) / sum(rate(spring_data_repository_invocations_seconds_count{application="hedera-mirror-grpc"}[5m])) by (namespace, pod) > 1
+    for: 1m
+    labels:
+      severity: warning
       application: hedera-mirror-grpc
 
 rbac:

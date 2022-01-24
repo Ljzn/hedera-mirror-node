@@ -18,7 +18,7 @@
 
 \copy contract_history (auto_renew_period, created_timestamp, deleted, expiration_timestamp, file_id, id, key, memo, num, obtainer_id, proxy_account_id, public_key, realm, shard, timestamp_range, type) from contract_history.csv csv;
 
-\copy contract_log (bloom, consensus_timestamp, contract_id, data, index, topic0, topic1, topic2, topic3) from contract_log.csv csv;
+\copy contract_log (bloom, consensus_timestamp, contract_id, data, index, topic0, topic1, topic2, topic3, root_contract_id) from contract_log.csv csv;
 
 \copy contract_result (amount, bloom, call_result, consensus_timestamp, contract_id, created_contract_ids, error_message, function_parameters, function_result, gas_limit, gas_used) from contract_result.csv csv;
 
@@ -26,9 +26,9 @@
 
 \copy custom_fee (amount, amount_denominator, collector_account_id, created_timestamp, denominating_token_id, maximum_amount, minimum_amount, token_id) from custom_fee.csv csv;
 
-\copy entity (auto_renew_account_id, auto_renew_period, created_timestamp, deleted, expiration_timestamp, id, key, memo, num, public_key, proxy_account_id, realm, shard, submit_key, type, receiver_sig_required, max_automatic_token_associations, timestamp_range) from entity.csv csv;
+\copy entity (alias, auto_renew_account_id, auto_renew_period, created_timestamp, deleted, expiration_timestamp, id, key, memo, num, public_key, proxy_account_id, realm, shard, submit_key, type, receiver_sig_required, max_automatic_token_associations, timestamp_range) from entity.csv csv;
 
-\copy entity_history (auto_renew_account_id, auto_renew_period, created_timestamp, deleted, expiration_timestamp, id, key, memo, num, public_key, proxy_account_id, realm, shard, submit_key, type, receiver_sig_required, max_automatic_token_associations, timestamp_range) from entity_history.csv csv;
+\copy entity_history (alias, auto_renew_account_id, auto_renew_period, created_timestamp, deleted, expiration_timestamp, id, key, memo, num, public_key, proxy_account_id, realm, shard, submit_key, type, receiver_sig_required, max_automatic_token_associations, timestamp_range) from entity_history.csv csv;
 
 \copy event_file (bytes, consesnsus_start, consensus_end, count, digest_algorithm, file_hash, hash, load_start, load_end, name, node_account_id, previous_hash, version) from event_file.csv csv;
 

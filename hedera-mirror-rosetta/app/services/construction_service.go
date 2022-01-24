@@ -25,6 +25,7 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"math/big"
 
 	"github.com/coinbase/rosetta-sdk-go/server"
@@ -34,13 +35,14 @@ import (
 	"github.com/hashgraph/hedera-mirror-node/hedera-mirror-rosetta/app/interfaces"
 	"github.com/hashgraph/hedera-mirror-node/hedera-mirror-rosetta/app/services/construction"
 	"github.com/hashgraph/hedera-mirror-node/hedera-mirror-rosetta/app/tools"
+	"github.com/hashgraph/hedera-protobufs-go/services"
 	"github.com/hashgraph/hedera-sdk-go/v2"
-	"github.com/hashgraph/hedera-sdk-go/v2/proto"
 	log "github.com/sirupsen/logrus"
 	"google.golang.org/protobuf/encoding/prototext"
 )
 
 const MetadataKeyValidStartNanos = "valid_start_nanos"
+const MetadataKeyMemo = "memo"
 
 // constructionAPIService implements the server.ConstructionAPIServicer interface.
 type constructionAPIService struct {
@@ -175,12 +177,14 @@ func (c *constructionAPIService) ConstructionPayloads(
 	request *rTypes.ConstructionPayloadsRequest,
 ) (*rTypes.ConstructionPayloadsResponse, *rTypes.Error) {
 	validStartNanos, rErr := c.getValidStartNanos(request.Metadata)
+	memo, rErr := c.getMemo(request.Metadata)
 	if rErr != nil {
 		return nil, rErr
 	}
+	ctx1 := context.WithValue(ctx, "memo", memo)
 
 	transaction, signers, rErr := c.transactionHandler.Construct(
-		ctx,
+		ctx1,
 		c.getRandomNodeAccountId(),
 		request.Operations,
 		validStartNanos,
@@ -246,21 +250,27 @@ func (c *constructionAPIService) ConstructionSubmit(
 		return nil, rErr
 	}
 
-	hash, err := transaction.GetTransactionHash()
+	hashBytes, err := transaction.GetTransactionHash()
 	if err != nil {
 		return nil, errors.ErrTransactionHashFailed
 	}
 
+	hash := tools.SafeAddHexPrefix(hex.EncodeToString(hashBytes))
+	log.Infof("Submitting transaction %s (hash %s) to node %s", transaction.GetTransactionID(),
+		hash, transaction.GetNodeAccountIDs()[0])
+
 	_, err = transaction.Execute(c.hederaClient)
 	if err != nil {
 		log.Errorf("Failed to execute transaction %s: %s", transaction.GetTransactionID(), err)
-		return nil, errors.ErrTransactionSubmissionFailed
+		return nil, errors.AddErrorDetails(
+			errors.ErrTransactionSubmissionFailed,
+			"reason",
+			fmt.Sprintf("%s", err),
+		)
 	}
 
 	return &rTypes.TransactionIdentifierResponse{
-		TransactionIdentifier: &rTypes.TransactionIdentifier{
-			Hash: tools.SafeAddHexPrefix(hex.EncodeToString(hash[:])),
-		},
+		TransactionIdentifier: &rTypes.TransactionIdentifier{Hash: hash},
 	}, nil
 }
 
@@ -291,6 +301,20 @@ func (c *constructionAPIService) getValidStartNanos(metadata map[string]interfac
 	return validStartNanos, nil
 }
 
+func (c *constructionAPIService) getMemo(metadata map[string]interface{}) (string, *rTypes.Error) {
+	var memo string
+	if metadata != nil && metadata[MetadataKeyMemo] != nil {
+		memo, ok := metadata[MetadataKeyMemo].(string)
+		if !ok {
+			return memo, errors.ErrInvalidArgument
+		}
+
+		return memo, nil
+	}
+
+	return memo, nil
+}
+
 // NewConstructionAPIService creates a new instance of a constructionAPIService.
 func NewConstructionAPIService(
 	baseService *BaseService,
@@ -312,6 +336,9 @@ func NewConstructionAPIService(
 	} else if hederaClient, err = hedera.ClientForName(network); err != nil {
 		return nil, err
 	}
+
+	// disable SDK auto retry
+	hederaClient.SetMaxAttempts(1)
 
 	networkMap := hederaClient.GetNetwork()
 	nodeAccountIds := make([]hedera.AccountID, 0, len(networkMap))
@@ -367,7 +394,7 @@ func addSignature(transaction interfaces.Transaction, pubKey hedera.PublicKey, s
 }
 
 func getFrozenTransactionBodyBytes(transaction interfaces.Transaction) ([]byte, *rTypes.Error) {
-	signedTransaction := proto.SignedTransaction{}
+	signedTransaction := services.SignedTransaction{}
 	if err := prototext.Unmarshal([]byte(transaction.String()), &signedTransaction); err != nil {
 		return nil, errors.ErrTransactionUnmarshallingFailed
 	}

@@ -12,8 +12,6 @@ create index if not exists assessed_custom_fee__consensus_timestamp
 -- account_balance
 alter table account_balance
     add constraint account_balance__pk primary key (consensus_timestamp, account_id);
-create index if not exists account_balance__account_timestamp
-    on account_balance (account_id desc, consensus_timestamp desc);
 
 -- account_balance_file
 alter table account_balance_file
@@ -52,6 +50,8 @@ create index if not exists contract_history__timestamp_range on contract_history
 -- contract_log
 alter table if exists contract_log
     add constraint contract_log__pk primary key (consensus_timestamp, index, payer_account_id);
+create index if not exists contract_log__contract_id_timestamp_index
+    on contract_log (contract_id, consensus_timestamp desc, index);
 
 -- contract_result
 alter table if exists contract_result
@@ -82,6 +82,8 @@ create index if not exists entity__id_type
     on entity (id, type);
 create index if not exists entity__public_key_type
     on entity (public_key, type) where public_key is not null;
+create index if not exists entity__alias
+    on entity (alias) where alias is not null;
 
 -- entity_history
 alter table if exists entity_history
@@ -113,8 +115,9 @@ alter table nft
 create index if not exists nft__account_token on nft (account_id, token_id);
 
 -- nft_transfer
-create unique index if not exists nft_transfer__timestamp_token_id_serial_num
-    on nft_transfer (consensus_timestamp desc, token_id desc, serial_number desc);
+create index if not exists nft_transfer__timestamp on nft_transfer (consensus_timestamp desc);
+create unique index if not exists nft_transfer__token_id_serial_num_timestamp
+    on nft_transfer(token_id desc, serial_number desc, consensus_timestamp desc);
 
 -- non_fee_transfer
 create index if not exists non_fee_transfer__consensus_timestamp

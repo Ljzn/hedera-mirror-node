@@ -187,10 +187,10 @@ value, it is recommended to only populate overridden properties in the custom `a
 | `hedera.mirror.grpc.checkTopicExists`                       | true             | Whether to throw an error when the topic doesn't exist                                         |
 | `hedera.mirror.grpc.db.host`                                | 127.0.0.1        | The IP or hostname used to connect to the database                                             |
 | `hedera.mirror.grpc.db.name`                                | mirror_node      | The name of the database                                                                       |
-| `hedera.mirror.grpc.db.password`                            | mirror_grpc_pass | The database password the GRPC API uses to connect.                                            |
+| `hedera.mirror.grpc.db.password`                            | mirror_grpc_pass | The database password used to connect to the database.                                         |
 | `hedera.mirror.grpc.db.port`                                | 5432             | The port used to connect to the database                                                       |
 | `hedera.mirror.grpc.db.sslMode`                             | DISABLE          | The ssl level of protection against Eavesdropping, Man-in-the-middle (MITM) and Impersonation on the db connection. Accepts either DISABLE, ALLOW, PREFER, REQUIRE, VERIFY_CA or VERIFY_FULL. |
-| `hedera.mirror.grpc.db.username`                            | mirror_grpc      | The username the GRPC API uses to connect to the database                                      |
+| `hedera.mirror.grpc.db.username`                            | mirror_grpc      | The username used to connect to the database                                                   |
 | `hedera.mirror.grpc.endTimeInterval`                        | 30s              | How often we should check if a subscription has gone past the end time                         |
 | `hedera.mirror.grpc.entityCacheSize`                        | 50000            | The maximum size of the cache to store entities used for existence check                       |
 | `hedera.mirror.grpc.listener.enabled`                       | true             | Whether to listen for incoming massages or not                                                 |
@@ -318,8 +318,9 @@ value, it is recommended to only populate overridden properties in the custom `a
 | `hedera.mirror.rest.db.tls.cert`                         | ""                      | The path to the public key the client should use to securely connect to the database           |
 | `hedera.mirror.rest.db.tls.enabled`                      | false                   | Whether TLS should be used for the database connection                                         |
 | `hedera.mirror.rest.db.tls.key`                          | ""                      | The path to the private key the client should use to securely connect to the database          |
-| `hedera.mirror.rest.maxRepeatedQueryParameters`          | 100                     | The maximum number of times any query parameter can be repeated in the uri                     |
 | `hedera.mirror.rest.log.level`                           | debug                   | The logging level. Can be trace, debug, info, warn, error or fatal.                            |
+| `hedera.mirror.rest.maxRepeatedQueryParameters`          | 100                     | The maximum number of times any query parameter can be repeated in the uri                     |
+| `hedera.mirror.rest.maxTimestampRange`                   | 7d                      | The maximum amount of time a timestamp range query param can span for some APIs.               |
 | `hedera.mirror.rest.network.unreleasedSupplyAccounts`    | [0.0.2, 0.0.42, ...]    | An array of account IDs whose aggregated balance subtracted from the total supply is the released supply |
 | `hedera.mirror.rest.port`                                | 5551                    | The REST API port                                                                              |
 | `hedera.mirror.rest.metrics.enabled`                     | true                    | Whether metrics are enabled for the REST API                                                   |
@@ -399,3 +400,20 @@ Name                                                    | Default               
 `hedera.mirror.rosetta.port`                            | 5700                    | The REST API port
 `hedera.mirror.rosetta.shard`                           | 0                       | The default shard number that this mirror node participates in
 `hedera.mirror.rosetta.realm`                           | 0                       | The default realm number within the shard
+
+## Web3 API
+
+Similar to the [Importer](#importer), the web3 API uses [Spring Boot](https://spring.io/projects/spring-boot) properties
+to configure the application.
+
+The following table lists the available properties along with their default values. Unless you need to set a non-default
+value, it is recommended to only populate overridden properties in the custom `application.yml`.
+
+Name                                                        | Default          | Description
+------------------------------------------------------------| -----------------| ---------------------------------------
+`hedera.mirror.web3.db.host`                                | 127.0.0.1        | The IP or hostname used to connect to the database
+`hedera.mirror.web3.db.name`                                | mirror_node      | The name of the database
+`hedera.mirror.web3.db.password`                            | mirror_web3_pass | The database password used to connect to the database
+`hedera.mirror.web3.db.port`                                | 5432             | The port used to connect to the database
+`hedera.mirror.web3.db.sslMode`                             | DISABLE          | The ssl level of protection against eavesdropping, man-in-the-middle (MITM) and impersonation on the db connection. Accepts either DISABLE, ALLOW, PREFER, REQUIRE, VERIFY_CA or VERIFY_FULL.
+`hedera.mirror.web3.db.username`                            | mirror_web3      | The username used to connect to the database

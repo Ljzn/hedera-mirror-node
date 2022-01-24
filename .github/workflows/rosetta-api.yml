@@ -12,6 +12,7 @@ defaults:
     working-directory: ./hedera-mirror-rosetta
 
 env:
+  IMAGE: hedera-mirror-rosetta-image
   MODULE: hedera-mirror-rosetta
 
 jobs:
@@ -29,7 +30,7 @@ jobs:
           restore-keys: ${{ runner.os }}-go-
 
       - name: Maven verify
-        run: ./mvnw verify -pl "${MODULE}" --also-make
+        run: ./mvnw verify -pl "${MODULE}"
         working-directory: .
         env:
           GOPATH: ~/go
@@ -74,7 +75,7 @@ jobs:
       - name: Upload Artifact
         uses: actions/upload-artifact@v2
         with:
-          name: ${{ env.MODULE }}
+          name: ${{ env.IMAGE }}
           path: /tmp/${{ env.MODULE }}.tar
           if-no-files-found: error
 
@@ -83,13 +84,15 @@ jobs:
     needs: image
     strategy:
       matrix:
-        online-only: ['true', 'false']
+        online-only: [ 'true', 'false' ]
     timeout-minutes: 15
     env:
       OFFLINE_URL: http://localhost:5700
     steps:
       - name: Checkout
         uses: actions/checkout@v2
+        with:
+          fetch-depth: 2  # retrieve the preceding commit so changed-files action can diff and get the changes
 
       - name: Get Changed Files
         id: changed-files-module
@@ -103,7 +106,7 @@ jobs:
       - name: Download Artifact
         uses: actions/download-artifact@v2
         with:
-          name: ${{ env.MODULE }}
+          name: ${{ env.IMAGE }}
           path: /tmp
 
       - name: Load Mirror Node ALl-in-One Docker Image
@@ -146,6 +149,8 @@ jobs:
 
       - name: Wait for Mirror Node to start syncing
         run: ./scripts/wait-for-mirror-node.sh
+        env:
+          MAX_WAIT_SECONDS: 240
 
       - name: Get Genesis Account Balances
         run: ./scripts/validation/get-genesis-balance.sh testnet
@@ -182,7 +187,9 @@ jobs:
             jq -s '. | {operators: .} | .server.offlineUrl="${{ env.OFFLINE_URL }}" | {test: .} | {rosetta: .}
               | {mirror: .} | {hedera: .}' | \
             yq eval -P > application.yml
-          go test -v
+          # hts transactions require online mode so as to verify the token currency using data in db
+          [[ ${{ matrix.online-only }} = 'false' ]] && tags="--godog.tags=~@hts" || true
+          go test -v $tags
 
       - name: Run Rosetta Postman API Tests
         working-directory: ./hedera-mirror-rosetta/scripts/validation/postman
@@ -207,7 +214,7 @@ jobs:
       - name: Delete Artifact
         uses: geekyeggo/delete-artifact@v1
         with:
-          name: ${{ env.MODULE }}
+          name: ${{ env.IMAGE }}
           failOnError: false
 
   gosec:

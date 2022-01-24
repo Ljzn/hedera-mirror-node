@@ -23,6 +23,10 @@
 const log4js = require('log4js');
 const config = require('../config');
 
+const assertSqlQueryEqual = (actual, expected) => {
+  expect(formatSqlQueryString(actual)).toEqual(formatSqlQueryString(expected));
+};
+
 const checkSql = (parsedparams, condition) => {
   for (const p of parsedparams) {
     if (p.field == condition.field && p.operator == condition.operator && p.value == condition.value) {
@@ -38,7 +42,14 @@ const checkSql = (parsedparams, condition) => {
 };
 
 const formatSqlQueryString = (query) => {
-  return query.trim().replace(/\n/g, ' ').replace(/\(\s+/g, '(').replace(/\s+\)/g, ')').replace(/\s+/g, ' ');
+  return query
+    .trim()
+    .replace(/\n/g, ' ')
+    .replace(/\(\s+/g, '(')
+    .replace(/\s+\)/g, ')')
+    .replace(/\s+/g, ' ')
+    .replace(/,\s+/g, ',')
+    .toLowerCase();
 };
 
 /**
@@ -227,12 +238,18 @@ const configureLogger = () => {
   global.logger = log4js.getLogger();
 };
 
+const getBuffer = (inputBytes, defaultBytes) => {
+  return inputBytes != null ? Buffer.from(inputBytes) : defaultBytes;
+};
+
 configureLogger();
 
 module.exports = {
+  assertSqlQueryEqual,
   badParamsList,
   checkSql,
   formatSqlQueryString,
+  getBuffer,
   parseSqlQueryAndParams,
   testBadParams,
   validateAccNumInArray,

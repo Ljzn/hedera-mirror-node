@@ -116,10 +116,11 @@ create table if not exists contract_log
     data                bytea       not null,
     index               int         not null,
     payer_account_id    bigint      not null,
-    topic0              varchar(64) null,
-    topic1              varchar(64) null,
-    topic2              varchar(64) null,
-    topic3              varchar(64) null
+    root_contract_id    bigint      null,
+    topic0              bytea       null,
+    topic1              bytea       null,
+    topic2              bytea       null,
+    topic3              bytea       null
 );
 comment on table contract_log is 'Contract execution result logs';
 
@@ -171,6 +172,7 @@ comment on table custom_fee is 'HTS Custom fees';
 -- entity
 create table if not exists entity
 (
+    alias                            bytea             null,
     auto_renew_account_id            bigint            null,
     auto_renew_period                bigint            null,
     created_timestamp                bigint            null,

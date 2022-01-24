@@ -22,14 +22,20 @@
 
 // external libraries
 const {Router} = require('@awaitjs/express');
+const {ContractController} = require('../controllers');
+
 const router = Router();
 
-const {ContractController} = require('../controllers/');
-
 // use full path to ensure controllers have access for next link population
-const path = '/api/v1/contracts';
-router.getAsync(`${path}`, ContractController.getContracts);
-router.getAsync(`${path}/:contractId`, ContractController.getContractById);
-router.getAsync(`${path}/:contractId/results`, ContractController.getContractResultsById);
+const resource = 'contracts';
+router.getAsync('/', ContractController.getContracts);
+router.getAsync('/:contractId', ContractController.getContractById);
+router.getAsync('/:contractId/results', ContractController.getContractResultsById);
+router.getAsync('/:contractId/results/logs', ContractController.getContractLogs);
+router.getAsync('/:contractId/results/:consensusTimestamp([0-9.]+)', ContractController.getContractResultsByTimestamp);
+router.getAsync('/results/:transactionId', ContractController.getContractResultsByTransactionId);
 
-module.exports = router;
+module.exports = {
+  resource,
+  router,
+};
