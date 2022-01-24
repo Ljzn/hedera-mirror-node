@@ -241,10 +241,6 @@ func (c *constructionAPIService) ConstructionSubmit(
 	ctx context.Context,
 	request *rTypes.ConstructionSubmitRequest,
 ) (*rTypes.TransactionIdentifierResponse, *rTypes.Error) {
-	if !c.IsOnline() {
-		return nil, errors.ErrEndpointNotSupportedInOfflineMode
-	}
-
 	transaction, rErr := unmarshallTransactionFromHexString(request.SignedTransaction)
 	if rErr != nil {
 		return nil, rErr
